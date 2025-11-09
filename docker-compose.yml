@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    container_name: api-devsecops
+    ports:
+      - "3000:3000"
+    volumes:
+      # Montage du volume pour persister la base de données
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/resources"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+

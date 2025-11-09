@@ -11,6 +11,8 @@ npm i express better-sqlite3
 
 ## Lancement
 
+### Option 1 : Lancement local
+
 ```bash
 node server.js
 # ou
@@ -19,16 +21,60 @@ npm start
 
 Le serveur démarre sur `http://localhost:3000`
 
-La base de données SQLite (`database.db`) sera créée automatiquement au premier lancement avec des données de test.
+La base de données SQLite sera créée automatiquement dans le dossier `data/` au premier lancement avec des données de test.
+
+### Option 2 : Lancement avec Docker
+
+#### Prérequis
+- Docker installé
+- Docker Compose installé (optionnel)
+
+#### Construction et lancement avec Docker
+
+```bash
+# Construire l'image Docker
+docker build -t api-devsecops .
+
+# Lancer le conteneur
+docker run -d -p 3000:3000 -v $(pwd)/data:/app/data --name api-devsecops api-devsecops
+```
+
+#### Lancement avec Docker Compose (recommandé)
+
+```bash
+# Lancer l'application
+docker-compose up -d
+
+# Voir les logs
+docker-compose logs -f
+
+# Arrêter l'application
+docker-compose down
+```
+
+Le serveur démarre sur `http://localhost:3000`
+
+La base de données SQLite sera persistée dans le dossier `data/` sur votre machine locale.
 
 ### Réinitialiser la base de données
 
-Pour réinitialiser la base de données avec les données de test :
-
+**Lancement local :**
 ```bash
 npm run reset-db
 # puis redémarrer le serveur
 npm start
+```
+
+**Avec Docker :**
+```bash
+# Arrêter le conteneur
+docker-compose down
+
+# Supprimer le dossier data
+rm -rf data/
+
+# Redémarrer
+docker-compose up -d
 ```
 
 ## Données de test
