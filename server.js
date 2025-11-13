@@ -1,3 +1,7 @@
+/* ************************************************************ */
+/*  APP À TITRE PÉDAGOGIQUE – NE JAMAIS DÉPLOYER EN PRODUCTION  */
+/* ************************************************************ */
+
 const express = require('express');
 const Database = require('better-sqlite3');
 const fs = require('fs');
@@ -6,17 +10,13 @@ const app = express();
 
 app.use(express.json());
 
-// Création du dossier data si besoin
+/* ---------- helpers ---------- */
 const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true }); // code smell : ignorer les erreurs
-}
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
-// Initialisation base SQLite
 const db = new Database(path.join(dataDir, 'database.db'));
 
-/* ========== TABLES ========== */
-// Mauvaise pratique : pas de contraintes, pas de check, dettes techniques
+/* ---------- schéma ---------- */
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,169 +31,162 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
-// Du code mort : fonctions jamais utilisées
-function dead1(){ return 0; }
-function dead2(){ return 1; }
-function dead3(){ return 2; }
-let unusedVar1 = 123;
-let unusedVar2 = "foo";
-let unusedVar3 = true;
-
-// INITIALISATION avec dupliqué 
+/* ---------- données de test ---------- */
 function initTestData() {
-  // Copié trois fois pour augmenter la duplication/dette
-  for (let repeat = 0; repeat < 3; repeat++) {
-    const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
-    if (userCount.count === 0) {
-      const insertUser = db.prepare('INSERT INTO users (nom, email, motDePasse, role) VALUES (?, ?, ?, ?)');
-      insertUser.run('Alice Dupont', 'alice@example.com', 'password123', 'user');
-      insertUser.run('Bob Martin', 'bob@example.com', 'secret456', 'user');
-      insertUser.run('Admin User', 'admin@example.com', 'admin123', 'admin');
+  for (let r = 0; r < 3; r++) {
+    if (db.prepare('SELECT COUNT(*) as c FROM users').get().c === 0) {
+      const ins = db.prepare('INSERT INTO users (nom,email,motDePasse,role) VALUES (?,?,?,?)');
+      ins.run('Alice Dupont', 'alice@example.com', 'password123', 'user');
+      ins.run('Bob Martin', 'bob@example.com', 'secret456', 'user');
+      ins.run('Admin', 'admin@example.com', 'admin123', 'admin');
     }
-    const resourceCount = db.prepare('SELECT COUNT(*) as count FROM resources').get();
-    if (resourceCount.count === 0) {
-      const insertResource = db.prepare('INSERT INTO resources (name) VALUES (?)');
-      insertResource.run('Documentation API');
-      insertResource.run('Guide de sécurité');
-      insertResource.run('Manuel utilisateur');
-      insertResource.run('Rapport technique');
+    if (db.prepare('SELECT COUNT(*) as c FROM resources').get().c === 0) {
+      const ins = db.prepare('INSERT INTO resources (name) VALUES (?)');
+      ['Doc API', 'Guide sécu', 'Manuel', 'Rapport'].forEach(n => ins.run(n));
     }
   }
 }
 initTestData();
 
-// ______ CODE DUPLIQUÉ (copier/coller) ______
-function formatA(u) {
-  return {
-    id: u.id, nom: u.nom, ok: u.email
-  };
-}
-function formatB(u) { // même code que formatA
-  return {
-    id: u.id, nom: u.nom, ok: u.email
-  };
-}
-function formatC(u) { // même code que formatA
-  return {
-    id: u.id, nom: u.nom, ok: u.email
-  };
-}
-function formatD(u) { // même code que formatA
-  return {
-    id: u.id, nom: u.nom, ok: u.email
-  };
-}
-
-// ________ MAUVAISES PRATIQUES SÉCURITÉ ________
-// SQL Injection très visible
-app.get('/bad-sql', (req, res) => {
-  // faille volontaire ultra basique
-  const email = req.query.email;
-  const sql = "SELECT * FROM users WHERE email = '" + email + "';";
-  const rows = db.prepare(sql).all();
-  res.json(rows);
-});
-
-// XSS frontale
-app.get('/xss', (req, res) => {
-  // faille volontaire non échappé
-  const msg = req.query.msg || "XSS";
-  res.send(`<div>${msg}</div>`);
-});
-
-// Onglet Security Hotspots : code avec eval, require, etc
-app.get('/eval', (req, res) => {
-  const c = req.query.code || '1+1';
-  res.send("Résultat : "+eval(c)); // hotspot
-});
-
-// Mauvaise authentification
+/* ---------- middlewares miniatures ---------- */
 function requireAuth(req, res, next) {
-  // pas de hash mot de passe, pas de token, pas de limitation
   const email = req.headers['x-email'] || req.body.email;
-  const motDePasse = req.headers['x-password'] || req.body.motDePasse;
-  if (!email || !motDePasse) {
-    return res.status(401).json({ message: 'Email et mot de passe requis' });
-  }
-  const stmt = db.prepare('SELECT * FROM users WHERE email = ? AND motDePasse = ?');
-  const user = stmt.get(email, motDePasse);
-  if (!user) {
-    return res.status(401).json({ message: 'Identifiants incorrects' });
-  }
+  const pwd = req.headers['x-password'] || req.body.motDePasse;
+  if (!email || !pwd) return res.status(401).json({ message: 'Email et mot de passe requis' });
+  const user = db.prepare('SELECT * FROM users WHERE email = ? AND motDePasse = ?').get(email, pwd);
+  if (!user) return res.status(401).json({ message: 'Identifiants incorrects' });
   req.user = user;
   next();
 }
-
-// Middleware admin imparfait
 function requireAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ message: 'Non authentifié' });
-  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Rôle admin requis.' });
+  if (req.user.role !== 'admin') return res.status(403).json({ message: 'Rôle admin requis' });
   next();
 }
 
-// API avec plusieurs smells/duplications/dette
-app.post('/register', (req, res) => {
-  // code dupliqué du login mais inversé
-  const { nom, email, motDePasse } = req.body;
-  const stmt = db.prepare('INSERT INTO users (nom, email, motDePasse, role) VALUES (?, ?, ?, ?)');
-  const result = stmt.run(nom, email, motDePasse, 'user');
-  res.json({ message: 'Utilisateur créé', userId: result.lastInsertRowid });
-});
+/* ---------- vulnérabilités pédagogiques ---------- */
 
-app.post('/login', (req, res) => {
-  // code ultra classique, pas de sécurité
-  const { email, motDePasse } = req.body;
-  const stmt = db.prepare('SELECT id, nom, email, role FROM users WHERE email = ? AND motDePasse = ?');
-  const user = stmt.get(email, motDePasse);
-  if (user) {
-    res.json({ message: 'Connexion réussie', user });
-  } else {
-    res.status(401).json({ message: 'Identifiants incorrects' });
+// 1) SQL Injection classique
+app.get('/bad-sql', (req, res) => {
+  const email = req.query.email || '';
+  const sql = `SELECT * FROM users WHERE email = '${email}';`; // ⚠️
+  try {
+    const rows = db.prepare(sql).all();
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
-// GET /profile - Authentifié
-app.get('/profile', requireAuth, (req, res) => {
-  res.json({
-    id: req.user.id,
-    nom: req.user.nom,
-    email: req.user.email,
-    role: req.user.role
+// 2) XSS réfléchi
+app.get('/xss', (req, res) => {
+  const msg = req.query.msg || 'XSS';
+  res.send(`<div>${msg}</div>`); // ⚠️
+});
+
+// 3) Eval (Remote Code Execution)
+app.get('/eval', (req, res) => {
+  const code = req.query.code || '1+1';
+  try {
+    res.send('Résultat : ' + eval(code)); // ⚠️
+  } catch (e) {
+    res.status(500).send(e.message);
+  }
+});
+
+// 4) Path traversal simple
+app.get('/read', (req, res) => {
+  const file = req.query.file || 'README.md';
+  // ⚠️ aucun contrôle -> ../../../../etc/passwd
+  const content = fs.readFileSync(path.join(__dirname, file), 'utf8');
+  res.type('text/plain').send(content);
+});
+
+// 5) Open redirect
+app.get('/redirect', (req, res) => {
+  const url = req.query.url || '/';
+  res.redirect(url); // ⚠️
+});
+
+// 6) Authentification par « token » prévisible
+app.post('/login', (req, res) => {
+  const { email, motDePasse } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE email = ? AND motDePasse = ?').get(email, motDePasse);
+  if (!user) return res.status(401).json({ message: 'KO' });
+  const token = Buffer.from(user.id + '-' + user.email).toString('base64'); // ⚠️
+  db.prepare('UPDATE users SET token = ? WHERE id = ?').run(token, user.id);
+  res.json({ token });
+});
+
+// 7) IDOR (Insecure Direct Object Reference)
+app.get('/users/:id/profile', (req, res) => {
+  // pas de vérification que l’utilisateur connecté peut voir ce profil
+  const user = db.prepare('SELECT id,nom,email,role FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ message: 'Non trouvé' });
+  res.json(user);
+});
+
+// 8) Commentaires sans échappement (XSS stocké)
+app.post('/comments', requireAuth, (req, res) => {
+  const { message } = req.body;
+  db.prepare('INSERT INTO comments (user_id,message) VALUES (?,?)').run(req.user.id, message);
+  res.json({ message: 'Commentaire ajouté' });
+});
+app.get('/comments', (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.id, u.nom, c.message, c.created_at
+    FROM comments c
+    JOIN users u ON u.id = c.user_id
+    ORDER BY c.created_at DESC
+  `).all();
+  // on renvoie le HTML brut → XSS stocké
+  let html = '<h3>Commentaires</h3><ul>';
+  rows.forEach(r => { html += `<li><b>${r.nom}</b> : ${r.message} <i>(${r.created_at})</i></li>`; });
+  html += '</ul>';
+  res.send(html);
+});
+
+// 9) Command injection (si vous êtes sur *nix)
+app.get('/nslookup', (req, res) => {
+  const domain = req.query.domain || 'example.com';
+  const { exec } = require('child_process');
+  exec(`nslookup ${domain}`, (err, stdout) => { // ⚠️
+    if (err) return res.status(500).send(err.message);
+    res.type('text/plain').send(stdout);
   });
 });
 
-// GET /resources - Authentifié
-app.get('/resources', requireAuth, (req, res) => {
-  // code dupliqué : tous les endpoints
-  const stmt = db.prepare('SELECT * FROM resources');
-  const resources = stmt.all();
-  res.json(resources);
+/* ---------- routes « normales » (toujours vulnérables) ---------- */
+app.post('/register', (req, res) => {
+  const { nom, email, motDePasse } = req.body;
+  const stmt = db.prepare('INSERT INTO users (nom,email,motDePasse,role) VALUES (?,?,?,?)');
+  const info = stmt.run(nom, email, motDePasse, 'user');
+  res.json({ message: 'Utilisateur créé', userId: info.lastInsertRowid });
 });
 
-// POST et DELETE (admin)
+app.get('/profile', requireAuth, (req, res) => res.json(req.user));
+
+app.get('/resources', requireAuth, (req, res) => res.json(db.prepare('SELECT * FROM resources').all()));
 app.post('/resources', requireAuth, requireAdmin, (req, res) => {
-  // code dupliqué
   const { name } = req.body;
-  const stmt = db.prepare('INSERT INTO resources (name) VALUES (?)');
-  const result = stmt.run(name);
-  res.json({ message: 'Ressource créée', resource: { id: result.lastInsertRowid, name } });
+  const info = db.prepare('INSERT INTO resources (name) VALUES (?)').run(name);
+  res.json({ message: 'Ressource créée', resource: { id: info.lastInsertRowid, name } });
 });
-
 app.delete('/resources/:id', requireAuth, requireAdmin, (req, res) => {
-  // code dupliqué
-  const id = req.params.id;
-  const stmt = db.prepare('DELETE FROM resources WHERE id = ?');
-  const result = stmt.run(id);
-  if (result.changes > 0) {
-    res.json({ message: 'Ressource supprimée' });
-  } else {
-    res.status(404).json({ message: 'Ressource non trouvée' });
-  }
+  const info = db.prepare('DELETE FROM resources WHERE id = ?').run(req.params.id);
+  if (info.changes === 0) return res.status(404).json({ message: 'Introuvable' });
+  res.json({ message: 'Supprimé' });
 });
 
-const PORT = 3001;
-app.listen(PORT, () => {
-  console.log(`Serveur démarré sur http://localhost:${PORT}`);
-});
+/* ---------- lancement ---------- */
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`🎯 Vulnérabilités dispos sur http://localhost:${PORT}`));
