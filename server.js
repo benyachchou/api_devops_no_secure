@@ -2,32 +2,20 @@ const express = require('express');
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
-const crypto = require('crypto');
 const app = express();
-
-// Hardcoded credentials and secrets
-const API_KEY = "12345-abcdef-67890-secret";
-const DB_PASSWORD = "p@ssw0rd";
 
 app.use(express.json());
 
-// Create data directory if not exists
+// Créer le dossier data s'il n'existe pas
 const dataDir = path.join(__dirname, 'data');
 if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-// Init SQLite DB
+// Initialisation de la base de données SQLite
 const db = new Database(path.join(dataDir, 'database.db'));
 
-// Dead code function
-function neverCalled() {
-  return "Je ne sers à rien !";
-}
-let unusedValue = 42;
-
-// Table creation (without security constraints)
+// Création des tables (sans contraintes de sécurité)
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,138 +32,131 @@ db.exec(`
   );
 `);
 
-// Init test data
+// Initialisation des données de test
 function initTestData() {
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
   if (userCount.count === 0) {
-    db.prepare('INSERT INTO users (nom, email, motDePasse, role) VALUES (?, ?, ?, ?)').run('Alice', 'alice@example.com', 'password123', 'user');
-    db.prepare('INSERT INTO users (nom, email, motDePasse, role) VALUES (?, ?, ?, ?)').run('Bob', 'bob@example.com', 'secret456', 'user');
-    db.prepare('INSERT INTO users (nom, email, motDePasse, role) VALUES (?, ?, ?, ?)').run('Admin', 'admin@example.com', 'admin123', 'admin');
+    const insertUser = db.prepare('INSERT INTO users (nom, email, motDePasse, role) VALUES (?, ?, ?, ?)');
+    insertUser.run('Alice Dupont', 'alice@example.com', 'password123', 'user');
+    insertUser.run('Bob Martin', 'bob@example.com', 'secret456', 'user');
+    insertUser.run('Admin User', 'admin@example.com', 'admin123', 'admin');
+    console.log('✅ Utilisateurs de test créés');
   }
+  
   const resourceCount = db.prepare('SELECT COUNT(*) as count FROM resources').get();
   if (resourceCount.count === 0) {
-    db.prepare('INSERT INTO resources (name) VALUES (?)').run('Doc API');
-    db.prepare('INSERT INTO resources (name) VALUES (?)').run('Guide sécurité');
+    const insertResource = db.prepare('INSERT INTO resources (name) VALUES (?)');
+    insertResource.run('Documentation API');
+    insertResource.run('Guide de sécurité');
+    insertResource.run('Manuel utilisateur');
+    insertResource.run('Rapport technique');
+    console.log('✅ Ressources de test créées');
   }
 }
 initTestData();
 
-// Duplicated function code (smell/duplication)
-function formatUserA(user) {
-  const safeNom = String(user.nom || '').trim().toLowerCase();
-  const safeEmail = String(user.email || '').trim().toLowerCase();
-  const role = user.role || 'user';
-  const meta = { len: safeNom.length, at: safeEmail.includes('@') };
-  return { id: user.id || 0, nom: safeNom, email: safeEmail, role, meta };
-}
-function formatUserB(user) { // duplicate
-  const safeNom = String(user.nom || '').trim().toLowerCase();
-  const safeEmail = String(user.email || '').trim().toLowerCase();
-  const role = user.role || 'user';
-  const meta = { len: safeNom.length, at: safeEmail.includes('@') };
-  return { id: user.id || 0, nom: safeNom, email: safeEmail, role, meta };
-}
-
-// Bad security: eval
-app.get('/insecure-eval', (req, res) => {
-  const code = req.query.code || '2+2';
-  try {
-    const result = eval(code); // VULNERABLE!
-    res.json({ result });
-  } catch (e) {
-    res.status(400).json({ error: String(e) });
+// Middleware (auth basique, sans vrais contrôles)
+function requireAuth(req, res, next) {
+  const email = req.headers['x-email'] || req.body.email;
+  const motDePasse = req.headers['x-password'] || req.body.motDePasse;
+  
+  if (!email || !motDePasse) {
+    return res.status(401).json({ message: 'Email et mot de passe requis' });
   }
-});
+  
+  const stmt = db.prepare('SELECT * FROM users WHERE email = ? AND motDePasse = ?');
+  const user = stmt.get(email, motDePasse);
+  
+  if (!user) {
+    return res.status(401).json({ message: 'Identifiants incorrects' });
+  }
+  
+  req.user = user;
+  next();
+}
 
-// Command injection
-app.get('/insecure-cmd', (req, res) => {
-  const arg = req.query.path || '.';
-  exec('ls ' + String(arg), (err, stdout) => {
-    if (err) return res.status(500).send(String(err));
-    res.type('text/plain').send(stdout);
-  });
-});
+function requireAdmin(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Non authentifié' });
+  }
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Accès refusé. Rôle admin requis.' });
+  }
+  next();
+}
 
-// SQL injection
+// Route vulnérable SQL Injection
 app.get('/bad-sql', (req, res) => {
   const email = req.query.email;
-  const sql = "SELECT * FROM users WHERE email = '" + email + "';"; // VULNERABLE!
-  const rows = db.prepare(sql).all();
-  res.json(rows);
-});
-
-// Weak hash (MD5)
-app.post('/weak-hash', (req, res) => {
-  const password = req.body.password || '';
-  const md5 = crypto.createHash('md5').update(String(password)).digest('hex');
-  res.json({ md5 });
-});
-
-// XSS
-app.get('/xss2', (req, res) => {
-  res.send(`<script>alert('${req.query.msg}');</script>`);
-});
-
-// Unescaped HTML
-app.get('/insecure-html', (req, res) => {
-  const input = req.query.q || 'Hello';
-  const html = '<div>Résultat: ' + String(input) + '</div>';
-  res.type('text/html').send(html);
-});
-
-// Open Redirect
-app.get('/open-redirect', (req, res) => {
-  res.redirect(req.query.url);
-});
-
-// Fake middleware (security bypassed)
-function fakeRequireAuth(req, res, next) {
-  next(); // Aucune vérification!
-}
-
-// Code smell: Bad promise
-app.get('/bad-promise', (req, res) => {
-  new Promise((resolve, reject) => {
-    setTimeout(() => { throw new Error('fail!'); }, 100); // Non catch!
-  });
-  res.send('done');
-});
-
-// Code smell: Async issue
-app.get('/async-issue', (req, res) => {
-  fs.readFile('./file.txt', function(err, data) {
-    // Ignored error!
-    res.send(data);
-  });
-});
-
-// Inefficient loop
-app.get('/bad-loop', (req, res) => {
-  let users = db.prepare('SELECT * FROM users').all();
-  for (let i = 0; i < users.length; i++) {
-    for (let j = 0; j < users.length; j++) {
-      if (i !== j && users[i].nom === users[j].nom) {
-        // rien
-      }
-    }
+  const sql = "SELECT * FROM users WHERE email = '" + email + "';"; // Vulnérabilité SQL Injection
+  try {
+    const rows = db.prepare(sql).all();
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
   }
-  res.json(users);
+});
+
+// Route vulnérable XSS
+app.get('/xss', (req, res) => {
+  const message = req.query.msg || 'Test XSS';
+  res.send(`<div>${message}</div>`); // Vulnérabilité XSS
 });
 
 // POST /register
 app.post('/register', (req, res) => {
   const { nom, email, motDePasse } = req.body;
-  db.prepare('INSERT INTO users (nom, email, motDePasse, role) VALUES (?, ?, ?, ?)').run(nom, email, motDePasse, 'user');
-  res.json({ message: 'Utilisateur créé' });
+  const stmt = db.prepare('INSERT INTO users (nom, email, motDePasse, role) VALUES (?, ?, ?, ?)');
+  const result = stmt.run(nom, email, motDePasse, 'user');
+  res.json({ message: 'Utilisateur créé', userId: result.lastInsertRowid });
 });
 
+// POST /login
 app.post('/login', (req, res) => {
   const { email, motDePasse } = req.body;
-  const user = db.prepare('SELECT id, nom, email, role FROM users WHERE email = ? AND motDePasse = ?').get(email, motDePasse);
+  const stmt = db.prepare('SELECT id, nom, email, role FROM users WHERE email = ? AND motDePasse = ?');
+  const user = stmt.get(email, motDePasse);
   if (user) {
     res.json({ message: 'Connexion réussie', user });
   } else {
     res.status(401).json({ message: 'Identifiants incorrects' });
+  }
+});
+
+// GET /profile
+app.get('/profile', requireAuth, (req, res) => {
+  res.json({
+    id: req.user.id,
+    nom: req.user.nom,
+    email: req.user.email,
+    role: req.user.role
+  });
+});
+
+// GET /resources
+app.get('/resources', requireAuth, (req, res) => {
+  const stmt = db.prepare('SELECT * FROM resources');
+  const resources = stmt.all();
+  res.json(resources);
+});
+
+// POST /resources
+app.post('/resources', requireAuth, requireAdmin, (req, res) => {
+  const { name } = req.body;
+  const stmt = db.prepare('INSERT INTO resources (name) VALUES (?)');
+  const result = stmt.run(name);
+  res.json({ message: 'Ressource créée', resource: { id: result.lastInsertRowid, name } });
+});
+
+// DELETE /resources/:id
+app.delete('/resources/:id', requireAuth, requireAdmin, (req, res) => {
+  const id = req.params.id;
+  const stmt = db.prepare('DELETE FROM resources WHERE id = ?');
+  const result = stmt.run(id);
+  if (result.changes > 0) {
+    res.json({ message: 'Ressource supprimée' });
+  } else {
+    res.status(404).json({ message: 'Ressource non trouvée' });
   }
 });
 
