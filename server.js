@@ -237,6 +237,103 @@ app.delete('/resources/:id', requireAuth, requireAdmin, (req, res) => {
   res.json({ message: 'Supprimé' });
 });
 
-/* ---------- lancement ---------- */
+… /* tout le code précédent est inchangé, on reprend juste après le dernier app.delete('/resources/:id'…) */
+
+/* ============================================================
+   DÉBUT – DUPLICATIONS MASSIVES POUR SONAR
+   ============================================================ */
+
+// 1) LOGIN × 3 (copié-collé)
+app.post('/loginV1', (req, res) => {
+  const { email, motDePasse } = req.body;
+  const user = db.prepare('SELECT id,nom,email,role FROM users WHERE email = ? AND motDePasse = ?').get(email, motDePasse);
+  if (user) { res.json({ message: 'Connexion ok', user }); } else { res.status(401).json({ message: 'KO' }); }
+});
+app.post('/loginV2', (req, res) => {
+  const { email, password } = req.body;          // micro-diff
+  const user = db.prepare('SELECT id,nom,email,role FROM users WHERE email = ? AND motDePasse = ?').get(email, password);
+  if (user) { res.json({ message: 'Connexion ok', user }); } else { res.status(401).json({ message: 'KO' }); }
+});
+app.post('/loginV3', (req, res) => {
+  const { mail, pwd } = req.body;               // micro-diff
+  const user = db.prepare('SELECT id,nom,email,role FROM users WHERE email = ? AND motDePasse = ?').get(mail, pwd);
+  if (user) { res.json({ message: 'Connexion ok', user }); } else { res.status(401).json({ message: 'KO' }); }
+});
+
+// 2) REGISTER × 3
+app.post('/registerV1', (req, res) => {
+  const { nom, email, motDePasse } = req.body;
+  const info = db.prepare('INSERT INTO users (nom,email,motDePasse,role) VALUES (?,?,?,?)').run(nom, email, motDePasse, 'user');
+  res.json({ message: 'Utilisateur créé', userId: info.lastInsertRowid });
+});
+app.post('/registerV2', (req, res) => {
+  const { name, email, password } = req.body;   // micro-diff
+  const info = db.prepare('INSERT INTO users (nom,email,motDePasse,role) VALUES (?,?,?,?)').run(name, email, password, 'user');
+  res.json({ message: 'Utilisateur créé', userId: info.lastInsertRowid });
+});
+app.post('/registerV3', (req, res) => {
+  const { username, mail, pass } = req.body;    // micro-diff
+  const info = db.prepare('INSERT INTO users (nom,email,motDePasse,role) VALUES (?,?,?,?)').run(username, mail, pass, 'user');
+  res.json({ message: 'Utilisateur créé', userId: info.lastInsertRowid });
+});
+
+// 3) RESOURCES GET × 3
+app.get('/resourcesV1', requireAuth, (req, res) => {
+  const stmt = db.prepare('SELECT * FROM resources');
+  const resources = stmt.all();
+  res.json(resources);
+});
+app.get('/resourcesV2', requireAuth, (req, res) => {
+  const statement = db.prepare('SELECT * FROM resources'); // micro-diff
+  const resources = statement.all();
+  res.json(resources);
+});
+app.get('/resourcesV3', requireAuth, (req, res) => {
+  const sql = db.prepare('SELECT * FROM resources');     // micro-diff
+  const resources = sql.all();
+  res.json(resources);
+});
+
+// 4) RESOURCES POST × 3
+app.post('/resourcesV1', requireAuth, requireAdmin, (req, res) => {
+  const { name } = req.body;
+  const info = db.prepare('INSERT INTO resources (name) VALUES (?)').run(name);
+  res.json({ message: 'Ressource créée', resource: { id: info.lastInsertRowid, name } });
+});
+app.post('/resourcesV2', requireAuth, requireAdmin, (req, res) => {
+  const { title } = req.body;                          // micro-diff
+  const info = db.prepare('INSERT INTO resources (name) VALUES (?)').run(title);
+  res.json({ message: 'Ressource créée', resource: { id: info.lastInsertRowid, name: title } });
+});
+app.post('/resourcesV3', requireAuth, requireAdmin, (req, res) => {
+  const { label } = req.body;                          // micro-diff
+  const info = db.prepare('INSERT INTO resources (name) VALUES (?)').run(label);
+  res.json({ message: 'Ressource créée', resource: { id: info.lastInsertRowid, name: label } });
+});
+
+// 5) COMMENTS GET × 3
+app.get('/commentsV1', (req, res) => {
+  const rows = db.prepare(`SELECT c.id, u.nom, c.message, c.created_at FROM comments c JOIN users u ON u.id = c.user_id ORDER BY c.created_at DESC`).all();
+  let html = '<h3>Commentaires</h3><ul>';
+  rows.forEach(r => { html += `<li><b>${r.nom}</b> : ${r.message} <i>(${r.created_at})</i></li>`; });
+  html += '</ul>'; res.send(html);
+});
+app.get('/commentsV2', (req, res) => { // micro-diff
+  const rows = db.prepare(`SELECT c.id, u.nom, c.message, c.created_at FROM comments c JOIN users u ON u.id = c.user_id ORDER BY c.created_at DESC`).all();
+  let html = '<h3>Commentaires</h3><ul>';
+  rows.forEach(r => { html += `<li><strong>${r.nom}</strong> : ${r.message} <i>(${r.created_at})</i></li>`; });
+  html += '</ul>'; res.send(html);
+});
+app.get('/commentsV3', (req, res) => { // micro-diff
+  const rows = db.prepare(`SELECT c.id, u.nom, c.message, c.created_at FROM comments c JOIN users u ON u.id = c.user_id ORDER BY c.created_at DESC`).all();
+  let html = '<h3>Commentaires</h3><ul>';
+  rows.forEach(r => { html += `<li><b>${r.nom}</b> : ${r.message} <em>(${r.created_at})</em></li>`; });
+  html += '</ul>'; res.send(html);
+});
+
+/* ============================================================
+   FIN – DUPLICATIONS MASSIVES
+   ============================================================ */
+
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🎯 Vulnérabilités dispos sur http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🎯 Vulnérabilités & duplications dispos sur http://localhost:${PORT}`));
