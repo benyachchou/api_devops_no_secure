@@ -73,6 +73,59 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+/* ============================================================
+   DÉBUT – CODE SMELLS & DUPLICATIONS ARTIFICIELLES POUR SONAR
+   ============================================================ */
+
+// 1) Code mort massif
+function dead001(){ return 0; }
+function dead002(){ return 1; }
+function dead003(){ return 2; }
+let unused001 = 123;
+let unused002 = "foo";
+let unused003 = true;
+
+// 2) Duplication pure (copier-coller identique)
+function formatUser001(u) { return { id: u.id, nom: u.nom, ok: u.email }; }
+function formatUser002(u) { return { id: u.id, nom: u.nom, ok: u.email }; }
+function formatUser003(u) { return { id: u.id, nom: u.nom, ok: u.email }; }
+function formatUser004(u) { return { id: u.id, nom: u.nom, ok: u.email }; }
+
+// 3) Complexité cyclomatique explosive
+function megaIf(flag) {
+  if (flag === 1) return 'a';
+  if (flag === 2) return 'b';
+  if (flag === 3) return 'c';
+  if (flag === 4) return 'd';
+  if (flag === 5) return 'e';
+  if (flag === 6) return 'f';
+  if (flag === 7) return 'g';
+  if (flag === 8) return 'h';
+  if (flag === 9) return 'i';
+  if (flag === 10) return 'j';
+  return 'z';
+}
+
+// 4) Fonction jamais appelée + utilisation de == au lieu de ===
+function compare(a, b) {
+  if (a == b) return true;  // Non-strict equality
+  return false;
+}
+
+// 5) Promise non catchée (Reliability)
+function noCatch() {
+  Promise.resolve().then(() => { throw new Error('oups'); });
+}
+
+// 6) require() dynamique (Security Hotspot)
+function dynamicRequire(name) {
+  return require(name); // ⚠️
+}
+
+/* ============================================================
+   FIN – CODE SMELLS & DUPLICATIONS
+   ============================================================ */
+
 /* ---------- vulnérabilités pédagogiques ---------- */
 
 // 1) SQL Injection classique
@@ -106,7 +159,6 @@ app.get('/eval', (req, res) => {
 // 4) Path traversal simple
 app.get('/read', (req, res) => {
   const file = req.query.file || 'README.md';
-  // ⚠️ aucun contrôle -> ../../../../etc/passwd
   const content = fs.readFileSync(path.join(__dirname, file), 'utf8');
   res.type('text/plain').send(content);
 });
@@ -127,15 +179,14 @@ app.post('/login', (req, res) => {
   res.json({ token });
 });
 
-// 7) IDOR (Insecure Direct Object Reference)
+// 7) IDOR
 app.get('/users/:id/profile', (req, res) => {
-  // pas de vérification que l’utilisateur connecté peut voir ce profil
   const user = db.prepare('SELECT id,nom,email,role FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ message: 'Non trouvé' });
   res.json(user);
 });
 
-// 8) Commentaires sans échappement (XSS stocké)
+// 8) XSS stocké
 app.post('/comments', requireAuth, (req, res) => {
   const { message } = req.body;
   db.prepare('INSERT INTO comments (user_id,message) VALUES (?,?)').run(req.user.id, message);
@@ -148,24 +199,23 @@ app.get('/comments', (req, res) => {
     JOIN users u ON u.id = c.user_id
     ORDER BY c.created_at DESC
   `).all();
-  // on renvoie le HTML brut → XSS stocké
   let html = '<h3>Commentaires</h3><ul>';
   rows.forEach(r => { html += `<li><b>${r.nom}</b> : ${r.message} <i>(${r.created_at})</i></li>`; });
   html += '</ul>';
   res.send(html);
 });
 
-// 9) Command injection (si vous êtes sur *nix)
+// 9) Command injection
 app.get('/nslookup', (req, res) => {
   const domain = req.query.domain || 'example.com';
   const { exec } = require('child_process');
-  exec(`nslookup ${domain}`, (err, stdout) => { // ⚠️
+  exec(`nslookup ${domain}`, (err, stdout) => {
     if (err) return res.status(500).send(err.message);
     res.type('text/plain').send(stdout);
   });
 });
 
-/* ---------- routes « normales » (toujours vulnérables) ---------- */
+/* ---------- routes normales ---------- */
 app.post('/register', (req, res) => {
   const { nom, email, motDePasse } = req.body;
   const stmt = db.prepare('INSERT INTO users (nom,email,motDePasse,role) VALUES (?,?,?,?)');
