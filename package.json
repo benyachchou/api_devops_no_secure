@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "reset-db": "node reset-db.js"
+    "reset-db": "node reset-db.js",
+    "sonar": "sonar-scanner"
   },
   "keywords": [],
   "author": "",

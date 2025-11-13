@@ -2,6 +2,8 @@ const express = require('express');
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
+const crypto = require('crypto');
 const app = express();
 
 app.use(express.json());
@@ -58,6 +60,94 @@ function initTestData() {
 
 // Initialiser les données de test
 initTestData();
+
+// ====== Blocs dupliqués (exemple pour détection SonarQube) ======
+function formatUserDuplicateA(user) {
+  const safeNom = String(user.nom || '').trim().toLowerCase();
+  const safeEmail = String(user.email || '').trim().toLowerCase();
+  const role = user.role || 'user';
+  const metadata = {
+    lengthNom: safeNom.length,
+    hasAt: safeEmail.includes('@'),
+    flags: [role, 'active', 'verified'].filter(Boolean),
+  };
+  const score = (metadata.lengthNom > 5 ? 2 : 1) + (metadata.hasAt ? 3 : 0);
+  return {
+    id: user.id || 0,
+    nom: safeNom,
+    email: safeEmail,
+    role,
+    score,
+    meta: metadata,
+  };
+}
+
+function formatUserDuplicateB(user) {
+  const safeNom = String(user.nom || '').trim().toLowerCase();
+  const safeEmail = String(user.email || '').trim().toLowerCase();
+  const role = user.role || 'user';
+  const metadata = {
+    lengthNom: safeNom.length,
+    hasAt: safeEmail.includes('@'),
+    flags: [role, 'active', 'verified'].filter(Boolean),
+  };
+  const score = (metadata.lengthNom > 5 ? 2 : 1) + (metadata.hasAt ? 3 : 0);
+  return {
+    id: user.id || 0,
+    nom: safeNom,
+    email: safeEmail,
+    role,
+    score,
+    meta: metadata,
+  };
+}
+
+// ====== Endpoints volontairement vulnérables pour Hotspots Sécurité ======
+// 1) Évaluation dynamique (eval)
+app.get('/insecure-eval', (req, res) => {
+  const code = req.query.code || '2+2';
+  try {
+    const result = eval(code); // vulnérable
+    res.json({ result });
+  } catch (e) {
+    res.status(400).json({ error: String(e) });
+  }
+});
+
+// 2) Commande système (injection de commande)
+app.get('/insecure-cmd', (req, res) => {
+  const arg = req.query.path || '.';
+  exec('ls ' + String(arg), (err, stdout) => {
+    if (err) return res.status(500).send(String(err));
+    res.type('text/plain').send(stdout);
+  });
+});
+
+// 3) Requête SQL concaténée (Injection SQL)
+app.get('/insecure-query', (req, res) => {
+  const email = req.query.email || '';
+  const sql = "SELECT id, nom, email, role FROM users WHERE email = '" + email + "'"; // vulnérable
+  try {
+    const rows = db.prepare(sql).all();
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// 4) Hash faible MD5
+app.post('/weak-hash', (req, res) => {
+  const password = req.body.password || '';
+  const md5 = crypto.createHash('md5').update(String(password)).digest('hex'); // vulnérable
+  res.json({ md5 });
+});
+
+// 5) Rendu HTML non échappé (XSS potentiel)
+app.get('/insecure-html', (req, res) => {
+  const input = req.query.q || 'Hello';
+  const html = '<div>Résultat: ' + String(input) + '</div>'; // vulnérable
+  res.type('text/html').send(html);
+});
 
 // Middleware pour vérifier l'authentification (sans contrôle - vérification basique)
 function requireAuth(req, res, next) {
@@ -157,7 +247,7 @@ app.delete('/resources/:id', requireAuth, requireAdmin, (req, res) => {
   }
 });
 
-const PORT = 3000;
+const PORT = 3001;
 app.listen(PORT, () => {
   console.log(`Serveur démarré sur http://localhost:${PORT}`);
 });
