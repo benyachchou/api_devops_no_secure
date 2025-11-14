@@ -74,10 +74,10 @@ function requireAdmin(req, res, next) {
 }
 
 /* ============================================================
-   DÉBUT – DUPLICATIONS & CODE SMELLS POUR SONARQUBE
+   DÉBUT – CODE SMELLS & DUPLICATIONS ARTIFICIELLES POUR SONAR
    ============================================================ */
 
-// 1) Codes morts
+// 1) Code mort massif
 function dead001(){ return 0; }
 function dead002(){ return 1; }
 function dead003(){ return 2; }
@@ -85,13 +85,13 @@ let unused001 = 123;
 let unused002 = "foo";
 let unused003 = true;
 
-// 2) Quatre copies strictement identiques
+// 2) Duplication pure (copier-coller identique)
 function formatUser001(u) { return { id: u.id, nom: u.nom, ok: u.email }; }
 function formatUser002(u) { return { id: u.id, nom: u.nom, ok: u.email }; }
 function formatUser003(u) { return { id: u.id, nom: u.nom, ok: u.email }; }
 function formatUser004(u) { return { id: u.id, nom: u.nom, ok: u.email }; }
 
-// 3) Complexité cyclomatique artificielle
+// 3) Complexité cyclomatique explosive
 function megaIf(flag) {
   if (flag === 1) return 'a';
   if (flag === 2) return 'b';
@@ -106,24 +106,24 @@ function megaIf(flag) {
   return 'z';
 }
 
-// 4) Non-strict equality
+// 4) Fonction jamais appelée + utilisation de == au lieu de ===
 function compare(a, b) {
-  if (a == b) return true;   // SONAR : Use ===
+  if (a == b) return true;  // Non-strict equality
   return false;
 }
 
-// 5) Promise non catchée
+// 5) Promise non catchée (Reliability)
 function noCatch() {
   Promise.resolve().then(() => { throw new Error('oups'); });
 }
 
-// 6) require dynamique (Security Hotspot)
+// 6) require() dynamique (Security Hotspot)
 function dynamicRequire(name) {
   return require(name); // ⚠️
 }
 
 /* ============================================================
-   FIN – DUPLICATIONS & CODE SMELLS
+   FIN – CODE SMELLS & DUPLICATIONS
    ============================================================ */
 
 /* ---------- vulnérabilités pédagogiques ---------- */
@@ -239,4 +239,4 @@ app.delete('/resources/:id', requireAuth, requireAdmin, (req, res) => {
 
 /* ---------- lancement ---------- */
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`🎯 Vulnérabilités & smells dispos sur http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🎯 Vulnérabilités dispos sur http://localhost:${PORT}`));
